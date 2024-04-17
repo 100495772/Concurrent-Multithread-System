@@ -12,32 +12,77 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#define MAX_FILENAME_LENGTH 100 // Maximum length of the file name
+#define MAX_OPERATION_LENGTH 9 // Operation type: PURCHASE or SALE
 
 
-struct Operation {
-  int product_id;
-  char op[9]; // PURCHASE or SALE (maximum length 8)
-  int units;
+struct Transaction {
+    int product_id;
+    const char operation[MAX_OPERATION_LENGTH]; // Operation type: PURCHASE or SALE
+    int units;
 };
+
 
 // Structure used to pass parameters to the threads
 struct ThreadArgs {
+    int id; 
     int start_index; // Start index of operations for this thread
     int end_index;   // End index of operations for this thread
+    struct Transaction *operations;
+    int buffer_size;
+        queue* q; // Pointer to the queue
+
+    
 };
 
 // Producer
 void* producer(void* args) {
-  struct ThreadArgs* thread_args = (struct ThreadArgs*)args;
+  struct ThreadArgs* pr_args = (struct ThreadArgs*)args;
+    // Access thread arguments
+    int id = pr_args->id;
+    struct Transaction *operations = pr_args->operations;
+    int buffer_size = pr_args->buffer_size;
+    int start_index = pr_args->start_index;
+    int end_index = pr_args->end_index;
 
   // Process operations assigned to this thread
-  for (int i = thread_args->start_index; i < thread_args->end_index; i++) {
-      // Process operation operations[i]
-      printf("Producer thread processing operation %d\n", i);
+  for (int i = start_index; i < end_index; i++) {
+            
+    // Create an element with the operation data to insert in the queue.
+    // Allocate memory for the element
+    struct element *elem = malloc(sizeof(struct element));
+    if (elem == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        pthread_exit(NULL);
+    }
+    
+    // Set element data
+    elem->product_id = operations[i].product_id;
+    elem->units = operations[i].units;
+
+    // Convert operation string to integer
+    if (strcmp(operations[i].operation, "PURCHASE") == 0) {
+        elem->op = 0;
+    } else if (strcmp(operations[i].operation, "SALE") == 0) {
+        elem->op = 1;
+    } else {
+        printf("Invalid operation\n");
+        free(elem);
+        exit(1);
+    }
+
+    // Insert element in queue
+    queue_put(pr_args->q, elem);
+    
+    printf("Producer thread %d processing operation %d\n",pr_args->id, i);
+
+    // Free allocated memory for the element
+    free(elem);
+
   }
 
   // Free memory allocated for thread arguments
-  free(thread_args);
+  free(pr_args);
 
   // Exit the thread
   pthread_exit(NULL);
@@ -56,54 +101,60 @@ int main (int argc, const char * argv[])
   int product_stock [5] = {0};
 
   // get arguments
-  const char* filename = argv[1];
+  char filename[MAX_FILENAME_LENGTH];
+  FILE *file;
+  strcpy(filename, argv[1]);
+
   int num_producers = atoi(argv[2]);
   int num_consumers = atoi(argv[3]);
   int buffer_size = atoi(argv[4]);
 
-  // Open the file for reading
-  int fd = open(filename, O_RDONLY);
-  if (fd == -1) {
-      fprintf(stderr, "Error: Unable to open file %s\n", filename);
+  // Initialize the queue (circular buffer)
+  queue * q = queue_init(buffer_size);
+  if (q == NULL) {
+    // Error
+    fprintf(stderr, "Error initilizing queue");
+    return 1;
+  }
+
+  // Open the file
+  file = fopen(filename, "r");
+  if (file == NULL) {
+      printf("Error opening file %s\n", filename);
       return 1;
   }
 
   // Read the number of operations
   int num_operations;
-  char num_operations_str[10]; // Assuming the number of operations will not exceed 9 digits
-  int i = 0;
-  char ch;
-  while (read(fd, &ch, sizeof(char)) == sizeof(char) && ch != '\n') {
-      num_operations_str[i++] = ch;
+  if (fscanf(file, "%d", &num_operations) != 1) {
+      printf("Error reading the number of operations from file %s\n", filename);
+      fclose(file);
+      return 1;
   }
-  num_operations_str[i] = '\0';
-  num_operations = atoi(num_operations_str);
     
   printf("number of operations is: %d\n", num_operations);
 
-  // Allocate memory for operations array
-  struct Operation* operations = (struct Operation*)malloc(num_operations * sizeof(struct Operation));
+  // Allocate memory for operations
+  struct Transaction *operations = malloc(num_operations * sizeof(struct Transaction));
   if (operations == NULL) {
-      fprintf(stderr, "Error: Memory allocation failed\n");
-      close(fd);
+      printf("Memory allocation failed\n");
+      fclose(file);
       return 1;
   }
-  
-  // Read operations from file
+
+  // Read operations from the file
   for (int i = 0; i < num_operations; i++) {
-    if (read(fd, &(operations[i].product_id), sizeof(char)) != sizeof(char) ||
-        read(fd, &(operations[i].op), sizeof(char) * 8) != sizeof(char) * 8 ||
-        read(fd, &(operations[i].units), sizeof(char)) != sizeof(char)) {
-        fprintf(stderr, "Error: Unable to read operation from file\n");
-        close(fd);
+      if (fscanf(file, "%d %s %d", &operations[i].product_id, (char *)&operations[i].operation, &operations[i].units) != 3) {
+        printf("Error reading operation %d from file %s\n", i + 1, filename);
+        fclose(file);
         free(operations);
         return 1;
-    }
-    // Null-terminate the operation string
-    operations[i].op[8] = '\0';
+      }
+    printf("Operation %d: Product ID: %d, Operation Type: %s, Units: %d\n", i + 1, operations[i].product_id, operations[i].operation, operations[i].units);
   }
-    
-  close(fd);
+
+  // Close the file
+    fclose(file);
 
   // Now operations array contains the operations read from the file
 
@@ -122,14 +173,19 @@ int main (int argc, const char * argv[])
       return 1;
     }
 
+    thread_args->id = i;
+    thread_args->operations = operations;
+    thread_args->buffer_size = buffer_size;
     thread_args->start_index = start_index;
+    thread_args->q = q; // Pass the queue pointer
 
-    /*We assign values to start and end indexes of each thread
-    If i (divisor which represents number of thread) is smaller than remaining operations
-    that do not have an assigned thread yet (remainder) it means that we still have
-    threads left to create (we need to add 1 to continue with the following thread's arguments)*/
-    if (i < remaining_operations) {
+
+    /* producer threads are assigned operations in such a way that the
+    first remaining_operations threads receive one additional operation compared to the rest, 
+    to ensure fair distribution*/
+    if (remaining_operations > 0) {
       thread_args->end_index = start_index + operations_per_thread + 1;
+      remaining_operations--;   // Decrement the number of remaining operations
     // We are assigning the arguments of the last thread 
     } else {
         thread_args->end_index = start_index + operations_per_thread;
@@ -181,7 +237,11 @@ int main (int argc, const char * argv[])
   printf("  Product 4: %d\n", product_stock[3]);
   printf("  Product 5: %d\n", product_stock[4]);
 
+  // Free allocated memory
   free(operations);
+
+  // Destroy the queue
+  queue_destroy(q);
 
   return 0;
 }
