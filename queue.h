@@ -13,8 +13,8 @@ struct element {
 typedef struct queue {
   // Define the struct yourself
   struct element *buffer; // Array to hold elements
-  int front; // Front of the queue
-  int rear; // Rear of the queue
+  int head; // position of the head element of the queue
+  int tail; // position where the next element will be inserted (enqueued) into the queue
   int size; // Maximum size of the queue
 }queue;
 

@@ -18,8 +18,8 @@ queue* queue_init(int size)
       free(q);
       return NULL;
   }
-  q->front = -1; // Initialize front index
-  q->rear = -1; // Initialize rear index
+  q->head = -1; // Initialize head index
+  q->tail = -1; // Initialize tail index
   q->size = size; // Set the maximum size of the queue
   return q;
 }
@@ -27,17 +27,19 @@ queue* queue_init(int size)
 // To Enqueue an element
 int queue_put(queue *q, struct element* x)
 {
-  if (q == NULL || x == NULL) {
-        return -1; // Invalid queue or element
+  if (q == NULL || x == NULL) { 
+        perror("Invalid queue or element"); 
+        return -1; 
   }
 
   if (queue_full(q)) {
-      return -2; // Queue is full
+      perror("Queue is full");
+      return -1; 
   }
 
   // Add element to the queue
-  q->buffer[q->rear] = *x;
-  q->rear = (q->rear + 1) % q->size; // Move rear pointer circularly
+  q->buffer[q->tail] = *x;
+  q->tail = (q->tail + 1) % q->size; // Move tail pointer circularly
 
   return 0;
 }
@@ -50,16 +52,16 @@ struct element* queue_get(queue *q)
       return NULL; // Return NULL if the queue is empty
   }
 
-  // Get the element at the front of the queue
-  struct element* element = &(q->buffer[q->front]);
+  // Get the element at the head of the queue
+  struct element* element = &(q->buffer[q->head]);
 
-  // Move the front index forward
-  q->front++;
+  // Move the head index forward
+  q->head++;
 
-  // If the queue becomes empty after dequeueing, reset front and rear indices
-  if (q->front > q->rear) {
-      q->front = -1;
-      q->rear = -1;
+  // If the queue becomes empty after dequeueing, reset head and tail indices
+  if (q->head > q->tail) {
+      q->head = -1;
+      q->tail = -1;
   }
 
   return element;
@@ -68,21 +70,21 @@ struct element* queue_get(queue *q)
 //To check queue state
 int queue_empty(queue *q)
 {
-  // If front index is -1, the queue is empty
-  return (q->front == -1);
+  // If head index is -1, the queue is empty
+  return (q->head == -1);
 }
 
 int queue_full(queue *q)
 {
-  // If rear index is equal to the maximum size of the queue, the queue is full
-  return (q->rear == q->size - 1);
+  // If tail index is equal to the maximum size of the queue, the queue is full
+  return (q->tail == q->size - 1);
 }
 
 //To destroy the queue and free the resources
 int queue_destroy(queue *q)
 {
   if (q == NULL) {
-      // Error handling for NULL pointer
+      perror("Queue is a null pointer");
       return -1;
   }
   free(q->buffer); // Free the memory allocated for the buffer

@@ -15,6 +15,8 @@
 #define MAX_FILENAME_LENGTH 100 // Maximum length of the file name
 #define MAX_OPERATION_LENGTH 9 // Operation type: PURCHASE or SALE
 
+// auxiliary method to print queue: erase later
+void print_queue(queue *q);
 
 struct Transaction {
     int product_id;
@@ -22,9 +24,16 @@ struct Transaction {
     int units;
 };
 
+// Structure used to pass parameters to the consumer threads
+struct consumer_args {
+    queue *q;        // Pointer to the queue
+    int *profits;    // Pointer to profits variable
+    int *product_stock; // Pointer to product stock array
+};
 
-// Structure used to pass parameters to the threads
-struct ThreadArgs {
+
+// Structure used to pass parameters to the producer threads
+struct producer_args {
     int id; 
     int start_index; // Start index of operations for this thread
     int end_index;   // End index of operations for this thread
@@ -35,15 +44,46 @@ struct ThreadArgs {
     
 };
 
+
+// Consumer
+void* consumer(void * args) {
+    struct consumer_args *cons_args = (struct consumer_args *)args;
+    queue *q = cons_args->q;
+    int *profits = cons_args->profits;
+    int *product_stock = cons_args->product_stock;
+
+    while (!queue_empty(q)) {
+        // Dequeue element from the queue
+        struct element *element = queue_get(q);
+
+        // Process the transaction and update profits and stock
+        if (element->op == 0) { // Purchase operation
+            *profits -= element->units; // Subtract cost from profits
+            product_stock[element->product_id] += element->units; // Add units to stock
+        } else if (element->op == 1) { // Sale operation
+            *profits += element->units; // Add revenue to profits
+            product_stock[element->product_id] -= element->units; // Deduct units from stock
+        }
+
+        // Free the transaction memory
+        free(element);
+    }
+
+    // Exit the thread with the calculated profit and partial stock
+    pthread_exit(NULL);
+}
+
+
 // Producer
 void* producer(void* args) {
-  struct ThreadArgs* pr_args = (struct ThreadArgs*)args;
+  struct producer_args* pr_args = (struct producer_args*)args;
     // Access thread arguments
     int id = pr_args->id;
     struct Transaction *operations = pr_args->operations;
     int buffer_size = pr_args->buffer_size;
     int start_index = pr_args->start_index;
     int end_index = pr_args->end_index;
+    queue* q = pr_args->q;
 
   // Process operations assigned to this thread
   for (int i = start_index; i < end_index; i++) {
@@ -72,16 +112,17 @@ void* producer(void* args) {
     }
 
     // Insert element in queue
-    queue_put(pr_args->q, elem);
+    queue_put(q, elem);
+    //print_queue(q);
     
-    printf("Producer thread %d processing operation %d\n",pr_args->id, i);
+    //printf("Producer thread %d processing operation %d\n",pr_args->id, i);
 
     // Free allocated memory for the element
     free(elem);
 
-  }
+  } 
 
-  // Free memory allocated for thread arguments
+  // Free memory allocated for thread arguments 
   free(pr_args);
 
   // Exit the thread
@@ -164,9 +205,22 @@ int main (int argc, const char * argv[])
   int start_index = 0;
 
   pthread_t producers[num_producers];
+  pthread_t consumers[num_consumers];
+
+  for (int i = 0; i < num_consumers; i++ ) {
+
+    // Create consumer thread arguments
+    struct consumer_args c_args = {q, &profits, product_stock};
+  
+    // Launch consumer threads
+    if (pthread_create(&consumers[i], NULL, consumer, (void *)&c_args) != 0) {
+     fprintf(stderr, "Error: Unable to create consumer thread\n");
+      return 1;
+    }
+  }
 
   for (int i = 0; i < num_producers; i++) {
-    struct ThreadArgs* thread_args = (struct ThreadArgs*)malloc(sizeof(struct ThreadArgs));
+    struct producer_args* thread_args = (struct producer_args*)malloc(sizeof(struct producer_args));
     if (thread_args == NULL) {
       fprintf(stderr, "Error: Memory allocation failed\n");
       free(operations);
@@ -206,8 +260,16 @@ int main (int argc, const char * argv[])
   // Wait for producer threads to finish
   for (int i = 0; i < num_producers; i++) {
     if (pthread_join(producers[i], NULL) != 0) {
-      fprintf(stderr, "Error: Unable to join producer thread\n");
+      fprintf(stderr, "Error: Unable to ioin producer thread\n");
       free(operations);
+      return 1;
+    }
+  }
+  
+  // Wait for consumer threads to finish
+  for (int i = 0; i < num_consumers; i++) {
+    if (pthread_join(consumers[i], NULL) != 0) {
+      fprintf(stderr, "Error: Unable to ioin consumer thread\n");
       return 1;
     }
   }
@@ -244,4 +306,28 @@ int main (int argc, const char * argv[])
   queue_destroy(q);
 
   return 0;
+}
+
+
+void print_queue(queue *q) {
+    if (queue_empty(q)) {
+        printf("Queue is empty\n");
+        return;
+    }
+
+    printf("Queue contents:\n");
+    int current_index = q->head;
+    while (current_index != q->tail) {
+        printf("Product ID: %d, Operation: %d, Units: %d\n", 
+               q->buffer[current_index].product_id, 
+               q->buffer[current_index].op,
+               q->buffer[current_index].units);
+        
+        current_index = (current_index + 1) % q->size;
+    }
+    // Print the last element
+    printf("Product ID: %d, Operation: %d, Units: %d\n", 
+           q->buffer[current_index].product_id, 
+           q->buffer[current_index].op,
+           q->buffer[current_index].units);
 }
