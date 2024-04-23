@@ -21,7 +21,6 @@ queue* queue_init(int size)
   q->head = -1; // Initialize head index
   q->tail = -1; // Initialize tail index
   q->max_size = size; // Set the maximum size of the queue
-  //q->n_elements = 0; // Initialize number of elements to 0
   return q;
 }
 

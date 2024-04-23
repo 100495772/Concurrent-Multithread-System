@@ -51,6 +51,10 @@ struct producer_args {
     
 };
 
+struct consumer_result {
+  int profit;
+  int partial_stock[5];
+};
 
 // Consumer
 void* consumer(void * args) {
@@ -83,6 +87,8 @@ void* consumer(void * args) {
       int operation = element->op;
       int units = element->units;
 
+
+
       // Calculate profit and update stock based on the operation type
       if (operation == 0) { // Purchase operation
           *profits -= units * purchase_cost[product_id - 1];
@@ -91,13 +97,21 @@ void* consumer(void * args) {
           *profits += units * selling_price[product_id - 1];
           product_stock[product_id -1 ] -= units;
       }
-      //printf("Current Profits: %d\n", *profits);
-      //printf("Current Stock for Product %d: %d\n", product_id, product_stock[product_id - 1]);
+      printf("Current Profits: %d\n", *profits);
+      printf("Current Stock for Product %d: %d\n", product_id, product_stock[product_id - 1]);
 
       // Free the memory for the dequeued element (the memory allocation is made in the queue_get())
       free(element);
     }
-    pthread_exit(NULL);
+
+    // Consumer must return the profit and partial stock 
+    struct consumer_result c_result;
+
+    c_result.profit = *profits;
+    for (int i = 0; i < 5; i++) {
+      c_result.partial_stock[i] = product_stock[i];
+    }
+    pthread_exit(&c_result);
 }
 
 
@@ -259,7 +273,7 @@ int main (int argc, const char * argv[])
   pthread_t producers[num_producers];
   pthread_t consumers[num_consumers];
 
-  for (int i = 0; i < num_consumers; i++ ) {
+  for (int i = 0; i < num_consumers ; i++ ) {
 
     // Create consumer thread arguments
     struct consumer_args c_args = {q, &profits, product_stock};
