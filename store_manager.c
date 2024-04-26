@@ -180,9 +180,7 @@ void* producer(void* args) {
 
   fprintf(stderr,"Finishing producer\n");
   pthread_mutex_lock(&mremaining_producers);
-  printf("Remainig producers: %d\n", remaining_producers);
   remaining_producers -= 1;
-  printf("Remainig producers: %d\n", remaining_producers);
   pthread_mutex_unlock(&mremaining_producers);
   pthread_mutex_lock(&mutex);
   pthread_cond_broadcast(&non_empty);
@@ -224,8 +222,6 @@ int main (int argc, const char * argv[])
   int num_producers = atoi(argv[2]);
   remaining_producers = atoi(argv[2]);
   int num_consumers = atoi(argv[3]);
-  printf("AQUIIIIIIIIII: %d\n", num_producers);
-  printf("AQUIIIIIIIIII: %d\n", remaining_producers);
   int buffer_size = atoi(argv[4]);
 
   // Initialize the queue (circular buffer)
