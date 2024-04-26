@@ -17,6 +17,7 @@ typedef struct queue {
   int tail; // position where the next element will be inserted (enqueued) into the queue
   int max_size; // Maximum max_size of the queue
   //int n_elements; // current size
+  int cur_size;
 }queue;
 
 queue* queue_init (int max_size);

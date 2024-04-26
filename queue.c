@@ -18,9 +18,11 @@ queue* queue_init(int size)
       free(q);
       return NULL;
   }
-  q->head = -1; // Initialize head index
-  q->tail = -1; // Initialize tail index
+  q->head = 0; // Initialize head index
+  q->tail = 0; // Initialize tail index
   q->max_size = size; // Set the maximum size of the queue
+  q->cur_size = 0; // Initialize the current size of the queue
+  //q->n_elements = 0; // Initialize number of elements to 0
   return q;
 }
 
@@ -40,6 +42,7 @@ int queue_put(queue *q, struct element* x)
   // Add element to the queue
   q->buffer[q->tail] = *x;
   q->tail = (q->tail + 1) % q->max_size; // Move tail pointer circularly
+  q->cur_size++; // Increment the current size of the queue
 
   return 0;
 }
@@ -66,11 +69,12 @@ struct element* queue_get(queue *q)
 
   // Move the head index forward
   q->head = (q->head + 1) % q->max_size;
+  q->cur_size--; // Decrement the current size of the queue
 
   // If the queue becomes empty after dequeueing, reset head and tail indices
-  if (q->head > q->tail) {
-      q->head = -1;
-      q->tail = -1;
+  if (q->cur_size == 0) {
+      q->head = 0;
+      q->tail = 0;
   }
 
   return element;
@@ -80,7 +84,7 @@ struct element* queue_get(queue *q)
 int queue_empty(queue *q)
 {
     // If both head and tail indices are -1, the queue is empty
-    return (q->head == -1 && q->tail == -1);
+    return (q->cur_size == 0);
     // or
     //   return (q->n_elements == 0);
 
@@ -89,7 +93,7 @@ int queue_empty(queue *q)
 int queue_full(queue *q)
 {
   // If tail index is equal to the maximum max_size of the queue, the queue is full
-  return (q->tail == q->max_size - 1);
+  return (q->cur_size == q->max_size);
   // or
   // return (q->n_elements == q->max_size);
 
@@ -102,7 +106,7 @@ int queue_destroy(queue *q)
       perror("Queue is a null pointer");
       return -1;
   }
-  free(q->buffer); // Free the memory allocated for the buffer
+  // free(q->buffer); // Free the memory allocated for the buffer
   free(q); // Free the memory allocated for the queue structure
   return 0;
 }

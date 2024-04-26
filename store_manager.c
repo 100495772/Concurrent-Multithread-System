@@ -18,8 +18,9 @@
 pthread_mutex_t mutex;   /* mutex to access shared buffer */
 pthread_cond_t non_full; /* can we add more elements? */
 pthread_cond_t non_empty; /* can we remove elements? */
-pthread_mutex_t mend;   
-int end=0; 
+pthread_mutex_t mremaining_producers;   
+pthread_mutex_t mprofits;
+int remaining_producers; 
 
 
 int purchase_cost[] = {2, 5, 15, 25, 100};
@@ -48,7 +49,7 @@ struct producer_args {
     int buffer_size;
     queue* q; // Pointer to the queue
 
-    
+
 };
 
 struct consumer_result {
@@ -70,7 +71,8 @@ void* consumer(void * args) {
     for (;;) {
       pthread_mutex_lock(&mutex);
       while (queue_empty(q)) {
-        if (end==1) {
+        // pthread_mutex_lock(&mremaining_producers);
+        if (remaining_producers == 0 && queue_empty(q)) {
           fprintf(stderr,"Finishing service\n");
           pthread_mutex_unlock(&mutex);
           pthread_exit(0);
@@ -91,11 +93,15 @@ void* consumer(void * args) {
 
       // Calculate profit and update stock based on the operation type
       if (operation == 0) { // Purchase operation
+          pthread_mutex_lock(&mprofits);
           *profits -= units * purchase_cost[product_id - 1];
           product_stock[product_id - 1] += units;
+          pthread_mutex_unlock(&mprofits);
       } else if (operation == 1) { // Sale operation
+          pthread_mutex_lock(&mprofits);
           *profits += units * selling_price[product_id - 1];
           product_stock[product_id -1 ] -= units;
+          pthread_mutex_unlock(&mprofits);
       }
       printf("Current Profits: %d\n", *profits);
       printf("Current Stock for Product %d: %d\n", product_id, product_stock[product_id - 1]);
@@ -120,16 +126,16 @@ void* producer(void* args) {
 
   struct producer_args* pr_args = (struct producer_args*)args;
   // Access thread arguments
-  int id = pr_args->id;
+  // int id = pr_args->id;
   struct Transaction *operations = pr_args->operations;
-  int buffer_size = pr_args->buffer_size;
+  // int buffer_size = pr_args->buffer_size;
   int start_index = pr_args->start_index;
   int end_index = pr_args->end_index;
   queue* q = pr_args->q;
 
   // Process operations assigned to this thread
   for (int i = start_index; i < end_index; i++) {
-            
+
     // Create an element with the operation data to insert in the queue.
     int local_operation;
     // Convert operation string to integer
@@ -154,7 +160,7 @@ void* producer(void* args) {
 
     // Insert element in queue
     queue_put(q, &elem);
-    
+
     // Print the contents of the queue
     printf("Queue Contents:\n");
     for (int i = q->head; i != q->tail; i = (i + 1) % q->max_size) {
@@ -173,9 +179,11 @@ void* producer(void* args) {
   }
 
   fprintf(stderr,"Finishing producer\n");
-  pthread_mutex_lock(&mend);
-  end=1;
-  pthread_mutex_unlock(&mend);
+  pthread_mutex_lock(&mremaining_producers);
+  printf("Remainig producers: %d\n", remaining_producers);
+  remaining_producers -= 1;
+  printf("Remainig producers: %d\n", remaining_producers);
+  pthread_mutex_unlock(&mremaining_producers);
   pthread_mutex_lock(&mutex);
   pthread_cond_broadcast(&non_empty);
   pthread_mutex_unlock(&mutex);
@@ -205,7 +213,8 @@ int main (int argc, const char * argv[])
   pthread_mutex_init(&mutex,NULL);
   pthread_cond_init(&non_full,NULL);
   pthread_cond_init(&non_empty,NULL);
-  pthread_mutex_init(&mend,NULL);
+  pthread_mutex_init(&mremaining_producers,NULL);
+  pthread_mutex_init(&mprofits, NULL);
 
   // get arguments
   char filename[MAX_FILENAME_LENGTH];
@@ -213,7 +222,10 @@ int main (int argc, const char * argv[])
   strcpy(filename, argv[1]);
 
   int num_producers = atoi(argv[2]);
+  remaining_producers = atoi(argv[2]);
   int num_consumers = atoi(argv[3]);
+  printf("AQUIIIIIIIIII: %d\n", num_producers);
+  printf("AQUIIIIIIIIII: %d\n", remaining_producers);
   int buffer_size = atoi(argv[4]);
 
   // Initialize the queue (circular buffer)
@@ -238,7 +250,7 @@ int main (int argc, const char * argv[])
       fclose(file);
       return 1;
   }
-    
+
   printf("number of operations is: %d\n", num_operations);
 
   // Allocate memory for operations
@@ -277,7 +289,7 @@ int main (int argc, const char * argv[])
 
     // Create consumer thread arguments
     struct consumer_args c_args = {q, &profits, product_stock};
-  
+
     // Launch consumer threads
     if (pthread_create(&consumers[i], NULL, consumer, (void *)&c_args) != 0) {
      fprintf(stderr, "Error: Unable to create consumer thread\n");
@@ -331,7 +343,7 @@ int main (int argc, const char * argv[])
       return 1;
     }
   }
-  
+
   // Wait for consumer threads to finish
   for (int i = 0; i < num_consumers; i++) {
     if (pthread_join(consumers[i], NULL) != 0) {
@@ -339,22 +351,6 @@ int main (int argc, const char * argv[])
       return 1;
     }
   }
-
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
 
   // Output
   printf("Total: %d euros\n", profits);
@@ -372,7 +368,8 @@ int main (int argc, const char * argv[])
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&non_full);
   pthread_cond_destroy(&non_empty);
-  pthread_mutex_destroy(&mend);
+  pthread_mutex_destroy(&mremaining_producers);
+  pthread_mutex_destroy(&mprofits);
 
     // Destroy the queue
   queue_destroy(q);
