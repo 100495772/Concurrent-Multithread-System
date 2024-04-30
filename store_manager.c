@@ -64,16 +64,11 @@ void* consumer(void * args) {
     int *profits = cons_args->profits;
     int *product_stock = cons_args->product_stock;
 
-    // Quitar sleep luego
-    //sleep(2);
-    printf("I'm a consumer\n");
 
     for (;;) {
       pthread_mutex_lock(&mutex);
       while (queue_empty(q)) {
-        // pthread_mutex_lock(&mremaining_producers);
         if (remaining_producers == 0 && queue_empty(q)) {
-          fprintf(stderr,"Finishing service\n");
           pthread_mutex_unlock(&mutex);
           pthread_exit(0);
         }
@@ -103,8 +98,6 @@ void* consumer(void * args) {
           product_stock[product_id -1 ] -= units;
           pthread_mutex_unlock(&mprofits);
       }
-      printf("Current Profits: %d\n", *profits);
-      printf("Current Stock for Product %d: %d\n", product_id, product_stock[product_id - 1]);
 
       // Free the memory for the dequeued element (the memory allocation is made in the queue_get())
       free(element);
@@ -153,24 +146,10 @@ void* producer(void* args) {
     pthread_mutex_lock(&mutex);
     while( queue_full(q)) {
       pthread_cond_wait(&non_full, &mutex);
-    }
-
-    printf("Producer thread %d adding element with Product ID: %d, Operation: %d, Units: %d\n", 
-      pr_args->id, elem.product_id, elem.op, elem.units);   
+    } 
 
     // Insert element in queue
     queue_put(q, &elem);
-
-    // Print the contents of the queue
-    printf("Queue Contents:\n");
-    for (int i = q->head; i != q->tail; i = (i + 1) % q->max_size) {
-      if (queue_empty(q)) {
-        printf("Queue is empty\n");
-    }
-    else {
-        printf("Product ID: %d, Operation: %d, Units: %d\n", 
-                q->buffer[i].product_id, q->buffer[i].op, q->buffer[i].units);}
-    }
 
     pthread_cond_signal(&non_empty);
     pthread_mutex_unlock(&mutex);
@@ -178,7 +157,7 @@ void* producer(void* args) {
 
   }
 
-  fprintf(stderr,"Finishing producer\n");
+  // fprintf(stderr,"Finishing producer\n");
   pthread_mutex_lock(&mremaining_producers);
   remaining_producers -= 1;
   pthread_mutex_unlock(&mremaining_producers);
@@ -188,8 +167,6 @@ void* producer(void* args) {
 
   // Free memory allocated for thread arguments 
   free(pr_args);
-
-  fprintf(stderr, "Finished producer\n");
 
   // Exit the thread
   pthread_exit(NULL);
@@ -247,8 +224,6 @@ int main (int argc, const char * argv[])
       return 1;
   }
 
-  printf("number of operations is: %d\n", num_operations);
-
   // Allocate memory for operations
   struct Transaction *operations = malloc(num_operations * sizeof(struct Transaction));
   if (operations == NULL) {
@@ -265,7 +240,6 @@ int main (int argc, const char * argv[])
         free(operations);
         return 1;
       }
-    printf("Operation %d: Product ID: %d, Operation Type: %s, Units: %d\n", i + 1, operations[i].product_id, operations[i].operation, operations[i].units);
   }
 
   // Close the file
@@ -351,11 +325,11 @@ int main (int argc, const char * argv[])
   // Output
   printf("Total: %d euros\n", profits);
   printf("Stock:\n");
-  printf("  Product 1: %d units\n", product_stock[0]);
-  printf("  Product 2: %d units\n", product_stock[1]);
-  printf("  Product 3: %d units\n", product_stock[2]);
-  printf("  Product 4: %d units\n", product_stock[3]);
-  printf("  Product 5: %d units\n", product_stock[4]);
+  printf("  Product 1: %d\n", product_stock[0]);
+  printf("  Product 2: %d\n", product_stock[1]);
+  printf("  Product 3: %d\n", product_stock[2]);
+  printf("  Product 4: %d\n", product_stock[3]);
+  printf("  Product 5: %d\n", product_stock[4]);
 
   // Free allocated memory
   free(operations);
