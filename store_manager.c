@@ -19,7 +19,6 @@ pthread_mutex_t mutex;   /* mutex to access shared buffer */
 pthread_cond_t non_full; /* can we add more elements? */
 pthread_cond_t non_empty; /* can we remove elements? */
 pthread_mutex_t mremaining_producers;
-//pthread_mutex_t mprofits;
 int remaining_producers; 
 
 
@@ -31,13 +30,6 @@ struct Transaction {
     const char operation[MAX_OPERATION_LENGTH]; // Operation type: PURCHASE or SALE
     int units;
 };
-
-// Structure used to pass parameters to the consumer threads
-/*struct consumer_args {
-    queue *q;        // Pointer to the queue
-    int *profits;    // Pointer to profits variable
-    int *product_stock; // Pointer to prod uct stock array
-};*/
 
 
 // Structure used to pass parameters to the producer threads
@@ -59,10 +51,8 @@ struct consumer_result {
 
 // Consumer
 void* consumer(void * args) {
-    //struct consumer_args *cons_args = (struct consumer_args *)args;
+  
     queue *q = (struct queue*)args;
-    // int *profits = cons_args->profits;
-    // int *product_stock = cons_args->product_stock;
 
     struct consumer_result *c_result = (struct consumer_result*)malloc(sizeof(struct consumer_result));
     c_result->profit = 0;
@@ -76,7 +66,6 @@ void* consumer(void * args) {
         if (remaining_producers == 0 && queue_empty(q)) {
           pthread_mutex_unlock(&mutex);
           // Consumer must return the profit and partial stock 
-          // printf("Profit address: %d\n", c_result);
           pthread_exit((void*)c_result);
         }
         pthread_cond_wait(&non_empty, &mutex);
@@ -95,19 +84,15 @@ void* consumer(void * args) {
 
       // Calculate profit and update stock based on the operation type
       if (operation == 0) { // Purchase operation
-          //pthread_mutex_lock(&mprofits);
-          //*profits -= units * purchase_cost[product_id - 1];
-          //product_stock[product_id - 1] += units;
+        
           c_result->profit -= units * purchase_cost[product_id - 1];
           c_result->partial_stock[product_id - 1] += units;
-          //pthread_mutex_unlock(&mprofits);
+          
       } else if (operation == 1) { // Sale operation
-          //pthread_mutex_lock(&mprofits);
-          //*profits += units * selling_price[product_id - 1];
-          //product_stock[product_id -1 ] -= units;
+
           c_result->profit += units * selling_price[product_id - 1];
           c_result->partial_stock[product_id - 1] -= units;
-          //pthread_mutex_unlock(&mprofits);
+          
       }
 
       // Free the memory for the dequeued element (the memory allocation is made in the queue_get())
@@ -191,7 +176,6 @@ int main (int argc, const char * argv[])
   pthread_cond_init(&non_full,NULL);
   pthread_cond_init(&non_empty,NULL);
   pthread_mutex_init(&mremaining_producers,NULL);
-  //pthread_mutex_init(&mprofits, NULL);
 
   // get arguments
   char filename[MAX_FILENAME_LENGTH];
@@ -259,9 +243,7 @@ int main (int argc, const char * argv[])
 
   for (int i = 0; i < num_consumers ; i++ ) {
 
-    // Create consumer thread arguments
-    //struct consumer_args c_args = {q, &profits, product_stock};
-
+    // The consumer threads only need the queue pointer as input
     // Launch consumer threads
     if (pthread_create(&consumers[i], NULL, consumer, (void *)q) != 0) {
      fprintf(stderr, "Error: Unable to create consumer thread\n");
@@ -310,7 +292,7 @@ int main (int argc, const char * argv[])
   // Wait for producer threads to finish
   for (int i = 0; i < num_producers; i++) {
     if (pthread_join(producers[i], NULL) != 0) {
-      fprintf(stderr, "Error: Unable to ioin producer thread\n");
+      fprintf(stderr, "Error: Unable to join producer thread\n");
       free(operations);
       return 1;
     }
@@ -318,19 +300,20 @@ int main (int argc, const char * argv[])
 
   // Wait for consumer threads to finish
   for (int i = 0; i < num_consumers; i++) {
+    // Receive the result of the consumer thread (consumer profit and partial stock)
     void *consumer_result;
     if (pthread_join(consumers[i], &consumer_result) != 0) {
-      fprintf(stderr, "Error: Unable to ioin consumer thread\n");
+      fprintf(stderr, "Error: Unable to join consumer thread\n");
       return 1;
     }
+    // Cast the pointer we got from pthread_join to a struct consumer pointer
     struct consumer_result *result_pointer = (struct consumer_result *)consumer_result;
-    // printf("Consumer %d: Profit: %d\n", i, result_pointer->profit);
+    // Modify the total profit and total stock based on the consumer profit and partial stock
     profits += result_pointer->profit;
-    // printf("Profits: %d\n", profits);
     for (int j = 0; j < 5; j++){
       product_stock[j] += result_pointer->partial_stock[j];
     }
-    free(result_pointer);
+    free(result_pointer); // Free the memory allocated for the consumer result struct
   }
 
   // Output
@@ -350,7 +333,6 @@ int main (int argc, const char * argv[])
   pthread_cond_destroy(&non_full);
   pthread_cond_destroy(&non_empty);
   pthread_mutex_destroy(&mremaining_producers);
-  //pthread_mutex_destroy(&mprofits);
 
     // Destroy the queue
   queue_destroy(q);
